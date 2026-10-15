@@ -1,0 +1,365 @@
+// Prisma schema. PostgreSQL (Neon / Vercel Postgres / any Postgres 13+).
+// DATABASE_URL = pooled connection (runtime), DIRECT_URL = direct connection (migrations).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+}
+
+enum SourceType {
+  RSS       // RSS 2.0 / Atom feeds (preferred)
+  HTML_LIST // listing page parsed with CSS selectors (only where permitted)
+  JSON_API  // official JSON APIs
+}
+
+enum ItemStatus {
+  DETECTED   // discovered, waiting for extraction
+  EXTRACTED  // content normalised, waiting for generation
+  DUPLICATE  // same story already covered
+  GENERATED  // an Article was produced
+  SKIPPED    // intentionally not processed (too old, too thin, blocked, ...)
+  FAILED     // exhausted retries
+}
+
+enum ArticleStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  UNPUBLISHED
+  REJECTED
+}
+
+enum ImageKind {
+  NONE
+  SOURCE_LICENSED
+  STOCK
+  AI_ILLUSTRATION
+  FALLBACK
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(EDITOR)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  revisions    ArticleRevision[]
+}
+
+model Source {
+  id                   String     @id @default(cuid())
+  name                 String
+  siteUrl              String
+  type                 SourceType @default(RSS)
+  feedUrl              String
+  enabled              Boolean    @default(true)
+  checkIntervalMinutes Int        @default(5)
+  defaultCategory      String? // category slug hint when the AI is unsure
+  trustLevel           Int        @default(2) // 1 low, 2 medium, 3 high
+  /// FEED_ONLY: use only what the feed provides. FULL_PAGE: also fetch the article page (robots.txt permitting).
+  fetchMode            String     @default("FEED_ONLY")
+  respectRobots        Boolean    @default(true)
+  /// Admin attests that automated processing of this source is permitted by its terms/licence.
+  termsAcknowledged    Boolean    @default(false)
+  /// Source images may be re-used only if the admin states they are licensed for re-use.
+  allowImageReuse      Boolean    @default(false)
+  imageLicenseNote     String?
+  licenseNote          String?
+  maxItemsPerRun       Int        @default(10)
+  maxAgeHours          Int        @default(48)
+  /// Type specific configuration (selectors for HTML_LIST, JSON paths for JSON_API).
+  config               Json?
+  /// AES-GCM encrypted JSON of request headers (e.g. API keys).
+  headersEnc           String?
+  etag                 String?
+  lastModified         String?
+  lastCheckedAt        DateTime?
+  lastSuccessAt        DateTime?
+  lastError            String?
+  consecutiveFailures  Int        @default(0)
+  itemsDetectedTotal   Int        @default(0)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  items                SourceItem[]
+}
+
+model SourceItem {
+  id            String     @id @default(cuid())
+  sourceId      String
+  source        Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  url           String
+  normalizedUrl String     @unique
+  guid          String?
+  title         String
+  summary       String?
+  contentText   String?
+  author        String?
+  imageUrl      String?
+  language      String?
+  publishedAt   DateTime?
+  contentHash   String?
+  simhash       String?
+  embedding     Float[]
+  status        ItemStatus @default(DETECTED)
+  statusReason  String?
+  storyId       String?
+  story         Story?     @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  meta          Json?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  articleSources ArticleSource[]
+  runs          GenerationRun[]
+
+  @@index([sourceId, createdAt])
+  @@index([status])
+  @@index([contentHash])
+  @@index([storyId])
+}
+
+/// A cluster of source items that report the same event. At most one Article per Story.
+model Story {
+  id          String     @id @default(cuid())
+  headline    String
+  keywords    String[]
+  embedding   Float[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  items       SourceItem[]
+  article     Article?
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
+  /// true => stories in this category may be auto-published; false => always manual approval
+  autoPublish Boolean @default(true)
+  /// sensitive categories need corroboration/manual review under the sensitive-news policy
+  sensitive   Boolean @default(false)
+  articles    Article[]
+}
+
+model Article {
+  id               String        @id @default(cuid())
+  slug             String        @unique
+  status           ArticleStatus @default(DRAFT)
+  title            String
+  dek              String?
+  excerpt          String
+  summary          String // short homepage summary
+  bodyMd           String
+  bodyHtml         String
+  seoTitle         String
+  metaDescription  String
+  tags             String[]
+  categoryId       String
+  category         Category      @relation(fields: [categoryId], references: [id])
+  isBreaking       Boolean       @default(false)
+  isFeatured       Boolean       @default(false)
+  riskLevel        Int           @default(0) // 0 normal, 1 elevated, 2 sensitive
+  reviewReason     String?
+  /// Machine-readable reason: VALIDATION | AWAITING_CORROBORATION | CATEGORY_MANUAL | AUTOPUBLISH_OFF | DAILY_LIMIT | AI_FLAG | COPY_RISK
+  reviewCode       String?
+  imageKind        ImageKind     @default(NONE)
+  imageUrl         String?
+  imageSmallUrl    String?
+  imageAlt         String?
+  imageCredit      String?
+  imageCreditUrl   String?
+  imageIsAi        Boolean       @default(false)
+  validation       Json?
+  similarityScore  Float?
+  aiProvider       String?
+  aiModel          String?
+  storyId          String?       @unique
+  story            Story?        @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  sourcePublishedAt DateTime?
+  publishedAt      DateTime?
+  updatedContentAt DateTime?
+  generatedAt      DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  viewCount        Int           @default(0)
+  sources          ArticleSource[]
+  revisions        ArticleRevision[]
+  corrections      Correction[]
+  views            ArticleView[]
+  runs             GenerationRun[]
+  // Generated column maintained by PostgreSQL (see migration "search_vector").
+  searchTsv        Unsupported("tsvector")?
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([categoryId, status, publishedAt(sort: Desc)])
+  @@index([searchTsv], type: Gin)
+}
+
+model ArticleSource {
+  id          String     @id @default(cuid())
+  articleId   String
+  article     Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  itemId      String?
+  item        SourceItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  sourceName  String
+  url         String
+  title       String
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@unique([articleId, url])
+}
+
+model ArticleRevision {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editorId  String?
+  editor    User?    @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  reason    String
+  snapshot  Json
+  createdAt DateTime @default(now())
+
+  @@index([articleId, createdAt])
+}
+
+model Correction {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  text      String
+  createdAt DateTime @default(now())
+}
+
+model ArticleView {
+  articleId String
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  day       DateTime @db.Date
+  count     Int      @default(0)
+
+  @@id([articleId, day])
+  @@index([day])
+}
+
+model GenerationRun {
+  id               String      @id @default(cuid())
+  itemId           String?
+  item             SourceItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  articleId        String?
+  article          Article?    @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  kind             String // generate | verify | embed | image
+  provider         String
+  model            String
+  promptTokens     Int         @default(0)
+  completionTokens Int         @default(0)
+  costUsd          Float       @default(0)
+  durationMs       Int         @default(0)
+  ok               Boolean     @default(true)
+  error            String?
+  createdAt        DateTime    @default(now())
+
+  @@index([createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String // user email or "system"
+  action    String
+  entity    String?
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model EventLog {
+  id        String   @id @default(cuid())
+  level     LogLevel @default(INFO)
+  scope     String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+}
+
+/// Durable job queue drained by Vercel Cron (claimed with FOR UPDATE SKIP LOCKED).
+model Job {
+  id          String    @id @default(cuid())
+  type        String // check_source | extract_item | generate_item | recheck_story
+  /// Idempotency key: only one active job per key.
+  dedupeKey   String    @unique
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(4)
+  runAt       DateTime  @default(now())
+  lockedUntil DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+}
+
+/// Fallback image store when Vercel Blob is not configured.
+model Media {
+  id          String   @id @default(cuid())
+  contentType String
+  data        Bytes
+  createdAt   DateTime @default(now())
+}
+
+model CronRun {
+  id         String    @id @default(cuid())
+  kind       String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  ok         Boolean   @default(true)
+  stats      Json?
+  error      String?
+
+  @@index([kind, startedAt])
+}
