@@ -5,10 +5,5 @@
   "crons": [
     { "path": "/api/cron/tick", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/maintenance", "schedule": "17 * * * *" }
-  ],
-  "functions": {
-    "src/app/api/cron/tick/route.ts": { "maxDuration": 300 },
-    "src/app/api/cron/maintenance/route.ts": { "maxDuration": 120 },
-    "src/app/admin/**/*": { "maxDuration": 120 }
-  }
+  ]
 }

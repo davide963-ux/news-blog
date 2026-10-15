@@ -1,0 +1,18 @@
+# Nightly logical backup of the production database. Requires repo secret DIRECT_URL (non-pooled connection string).
+# The dump is stored as a private workflow artifact for 14 days. For long-term retention copy it to object storage,
+# and ALSO enable your database provider's point-in-time recovery (Neon / Vercel Postgres / Supabase all offer it).
+name: Database backup
+on:
+  schedule: [{ cron: '23 2 * * *' }]
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install matching pg_dump
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-16
+      - name: Dump
+        run: pg_dump "${{ secrets.DIRECT_URL }}" --no-owner --format=custom --file=newsblog-$(date +%F).dump
+      - uses: actions/upload-artifact@v4
+        with: { name: db-backup, path: '*.dump', retention-days: 14 }

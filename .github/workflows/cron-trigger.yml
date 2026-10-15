@@ -1,0 +1,16 @@
+# Fallback scheduler for projects NOT on a Vercel plan that allows 5-minute crons (Hobby = once per day).
+# Calls the same endpoint Vercel Cron would. Requires repo secrets: SITE_URL (https://your-domain.com) and CRON_SECRET.
+# NOTE: GitHub may delay scheduled runs by several minutes under load. Delete this file if you use Vercel Pro crons.
+name: Trigger newsroom tick
+on:
+  schedule: [{ cron: '*/5 * * * *' }]
+  workflow_dispatch:
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/tick
+        run: |
+          curl --fail --silent --show-error --max-time 290 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/tick"

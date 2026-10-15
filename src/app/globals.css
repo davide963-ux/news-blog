@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: 250 248 244;
+  --card: 255 255 255;
+  --wash: 241 238 232;
+  --ink: 22 22 26;
+  --muted: 100 100 108;
+  --line: 222 217 208;
+  --accent: 178 24 36;
+  --accent-ink: 255 255 255;
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --paper: 15 16 19;
+  --card: 24 25 29;
+  --wash: 30 31 36;
+  --ink: 236 234 229;
+  --muted: 160 160 168;
+  --line: 52 53 60;
+  --accent: 240 90 98;
+  --accent-ink: 20 20 22;
+  color-scheme: dark;
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body { @apply bg-paper text-ink font-sans antialiased; text-rendering: optimizeLegibility; }
+  ::selection { background: rgb(var(--accent) / 0.25); }
+  :focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 2px; }
+  img { @apply bg-wash; }
+}
+
+@layer components {
+  .kicker { @apply font-sans text-[0.7rem] font-bold uppercase tracking-[0.14em] text-accent; }
+  .headline { @apply font-serif font-bold leading-[1.12] tracking-[-0.01em] text-ink; }
+  .rule-thick { border-top: 3px double rgb(var(--ink)); }
+  .link-hover { @apply decoration-accent underline-offset-4 hover:underline; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-card px-3.5 py-2 text-sm font-semibold text-ink transition hover:bg-wash disabled:opacity-50; }
+  .btn-primary { @apply border-transparent bg-accent text-accent-ink hover:opacity-90 hover:bg-accent; }
+  .btn-danger { @apply border-transparent bg-red-600 text-white hover:bg-red-700; }
+  .input { @apply w-full rounded-md border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent; }
+  .label { @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted; }
+  .panel { @apply rounded-lg border border-line bg-card; }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
