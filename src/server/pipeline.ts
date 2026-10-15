@@ -64,7 +64,9 @@ export async function generateItem(itemId: string): Promise<void> {
     const hardProblems = report.retryable.length > 0 && progScreen.some((c) => c.status === 'fail' || c.status === 'review');
     if (hardProblems && !last) { retryNote = report.retryable.join(' '); stricter = stricter || progScreen.some((c) => c.name === 'originality' && c.status === 'fail'); continue; }
     if (s.ai.verifyWithAi) {
-      try { verifier = await verifyArticle(s, sourceText, out.headline, body, item.id); verifierError = null; }
+      // Header facts (publisher, publication date, byline) were given to the writer, so the checker must see them too.
+      const header = all.map((m) => `Publisher: ${m.sourceName}\nPublished: ${m.publishedAt ? m.publishedAt.toISOString() : 'unknown'}${m.author ? `\nByline: ${m.author}` : ''}`).join('\n');
+      try { verifier = await verifyArticle(s, `${header}\n\n${sourceText}`, out.headline, body, item.id); verifierError = null; }
       catch (e) { verifier = null; verifierError = errMsg(e); }
     }
     report = validateArticle({ ...base, verifier, verifierError });

@@ -76,7 +76,11 @@ export function validateArticle(i: ValidateInput): ValidationReport {
   const publisherNames = [i.siteName, ...i.sourceNames].map((n) => n.toLowerCase());
   // "Reuters" is fine when the configured source is "Reuters World News" (and vice versa).
   const isPublisher = (n: string) => publisherNames.some((p) => p === n || p.includes(n) || n.includes(p));
-  const nouns = properNouns(`${out.headline}. ${plainBody}`).filter((n) => !isPublisher(n.toLowerCase()) && !MONTHS.includes(n.toLowerCase()) && !COMMON_PROPER.has(n.toLowerCase()));
+  // Title Case headlines ("Chandra X-ray Observatory Spots Radio Waves …") would be read as one giant proper noun, so they are
+  // only name-checked when written in sentence case. Figures in headlines are still checked above.
+  const headWords = out.headline.split(/\s+/).filter((w) => /[A-Za-z]/.test(w));
+  const titleCase = headWords.length >= 4 && headWords.filter((w) => /^[A-Z]/.test(w)).length / headWords.length > 0.6;
+  const nouns = properNouns(titleCase ? plainBody : `${out.headline}. ${plainBody}`).filter((n) => !isPublisher(n.toLowerCase()) && !MONTHS.includes(n.toLowerCase()) && !COMMON_PROPER.has(n.toLowerCase()));
   const unsupportedNames = nouns.filter((n) => {
     const ntoks = tokens(n, { keepStop: true });
     return ntoks.length > 0 && !srcNorm.includes(normalizeForMatch(n)) && !ntoks.every((t) => srcTokens.has(t));

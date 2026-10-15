@@ -87,6 +87,20 @@ describe('article validation', () => {
   });
 });
 
+describe('regressions from live NASA run', () => {
+  it('does not treat a Title Case headline as an unknown proper noun', () => {
+    const out = baseOut({ headline: 'Eastland Central Bank Holds Interest Rates After Split Committee Vote' });
+    const r = run(out);
+    expect(r.metrics.unsupportedNames).toEqual([]);
+    expect(r.decision).toBe('publish');
+  });
+  it('still catches an invented name in the body when the headline is Title Case', () => {
+    const body = GOOD_ARTICLE_BODY + '\n\nAnalyst Gregory Whitmore of Blackwater Capital called the move prudent.';
+    const r = run(baseOut({ headline: 'Eastland Central Bank Holds Interest Rates After Split Committee Vote', body }), body);
+    expect(r.decision).toBe('review');
+  });
+});
+
 describe('sensitivity classification', () => {
   it('flags crime, elections, health, conflict; leaves routine business alone', () => {
     const c = (title: string, lead = '', cat = false) => classifySensitivity({ settings: s, title, leadText: lead, aiTopics: [], categorySensitive: cat, isBreaking: false });
