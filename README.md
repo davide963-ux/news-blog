@@ -148,7 +148,7 @@ These are strong heuristics, **not a guarantee of truth**. They catch invented s
 | Variable | Required | Notes |
 |---|---|---|
 | `DATABASE_URL` | ✅ | pooled connection string |
-| `DIRECT_URL` | ✅ | direct connection string (used by migrations at build) |
+| `DIRECT_URL` | optional | direct (non-pooled) connection string for migrations; if unset, `DATABASE_URL` is used |
 | `SESSION_SECRET` | ✅ | `openssl rand -base64 48` |
 | `APP_ENCRYPTION_KEY` | ✅ | `openssl rand -base64 48` – keep it stable |
 | `CRON_SECRET` | ✅ | `openssl rand -base64 32`; Vercel sends it to cron routes automatically |
