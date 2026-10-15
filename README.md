@@ -13,8 +13,8 @@ It is designed for **Vercel**: there is no long-running worker. A Vercel Cron jo
 ```mermaid
 flowchart LR
   subgraph Vercel
-    CRON["Vercel Cron<br/>*/5 * * * *"] -->|"Bearer CRON_SECRET"| TICK["/api/cron/tick<br/>(up to 300 s)"]
-    CRON2["Vercel Cron hourly"] --> MAINT["/api/cron/maintenance<br/>cleanup + health alerts"]
+    CRON["GitHub Actions (every 5 min)<br/>or Vercel Cron on Pro"] -->|"Bearer CRON_SECRET"| TICK["/api/cron/tick<br/>(up to 300 s)"]
+    CRON2["Vercel Cron daily"] --> MAINT["/api/cron/maintenance<br/>cleanup + health alerts"]
     WEB["Next.js app<br/>public site + /admin"]
   end
   TICK --> Q[("PostgreSQL<br/>Job queue · Articles · Sources<br/>Settings · Logs · Media")]
@@ -139,7 +139,7 @@ These are strong heuristics, **not a guarantee of truth**. They catch invented s
 ### 3.1 Prerequisites
 - A PostgreSQL database. Easiest: **Vercel → Storage → Neon (Postgres)**; it provides a pooled URL and a direct URL.
 - An AI API key (Anthropic or OpenAI-compatible).
-- **Vercel Pro** (or higher) for the 5-minute cron. Hobby only allows daily crons — see 3.5 for the free alternative.
+- **Hobby plan:** Vercel only allows crons that run once a day, so `vercel.json` ships daily crons (a safety net) and the **5-minute schedule comes from the GitHub Actions workflow** in 3.5 (free). **Pro plan:** you can instead set the tick cron to `*/5 * * * *` in `vercel.json` and skip GitHub Actions.
 
 ### 3.2 Steps
 1. Push this repo to GitHub and **Import** it in Vercel (framework: Next.js; `vercel.json` already sets the build command `prisma generate && prisma migrate deploy && next build`).
@@ -161,7 +161,7 @@ These are strong heuristics, **not a guarantee of truth**. They catch invented s
 
 3. **Deploy.** Migrations run during the build and create the schema and the nine categories (World, Politics, Business, Technology, Economy, Entertainment, Sports, Science, Health). No articles are created — the homepage shows an honest "no stories yet" state until the first real story is published.
 4. Open `https://your-domain.com/admin/login`. Because no user exists you get the **first-run form**: enter `SETUP_TOKEN`, your name, email and a strong password. (CLI alternative: `ADMIN_EMAIL=… ADMIN_PASSWORD=… npm run db:seed`.) Then remove `SETUP_TOKEN` and redeploy.
-5. **Project → Settings → Cron Jobs** should list `/api/cron/tick` (`*/5 * * * *`) and `/api/cron/maintenance` (hourly).
+5. **Project → Settings → Cron Jobs** lists the two daily safety-net crons. **Then do 3.5 now** — without it, monitoring only runs once a day on Hobby.
 
 ### 3.3 Function duration
 `/api/cron/tick` exports `maxDuration = 300`. Fluid compute (default on new projects) allows this on all plans; on an older Hobby project the limit is lower — the tick simply processes fewer jobs per run and the queue continues on the next run, nothing is lost.
@@ -169,8 +169,8 @@ These are strong heuristics, **not a guarantee of truth**. They catch invented s
 ### 3.4 Domain & Search Console
 Add your domain, then submit `https://your-domain.com/sitemap.xml` and `/news-sitemap.xml` in Google Search Console. (Google News inclusion has its own eligibility rules and an application process; the news sitemap is provided but does not guarantee inclusion.)
 
-### 3.5 Not on Pro? Use GitHub Actions as the scheduler
-`.github/workflows/cron-trigger.yml` calls the same endpoint every 5 minutes. Add repo secrets `SITE_URL` and `CRON_SECRET`, and remove the `crons` entry for tick from `vercel.json`. GitHub may delay scheduled runs by a few minutes. Any external scheduler (cron-job.org, Upstash QStash, UptimeRobot) works the same way:
+### 3.5 Hobby plan: GitHub Actions is the 5-minute scheduler (required)
+`.github/workflows/cron-trigger.yml` calls the same endpoint every 5 minutes. In GitHub → repo → Settings → Secrets and variables → Actions, add `SITE_URL` (`https://your-domain.com`) and `CRON_SECRET` (same value as in Vercel). Then Actions tab → "Trigger newsroom tick" → Run workflow once to confirm it returns success. GitHub may delay scheduled runs by a few minutes. Any external scheduler (cron-job.org, Upstash QStash, UptimeRobot) works the same way:
 ```
 curl -H "Authorization: Bearer $CRON_SECRET" https://your-domain.com/api/cron/tick
 ```
